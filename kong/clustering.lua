@@ -459,20 +459,34 @@ function _M.init_worker(conf)
       -- we have to re-broadcast event using `post` because the dao
       -- events were sent using `post_local` which means not all workers
       -- can receive it
+
+      -- send event to other workers in the same node
       local res, err = kong.worker_events.post("clustering", "push_config")
       if not res then
         ngx_log(ngx_ERR, "unable to broadcast event: " .. err)
       end
+
+      -- send event to other nodes in the cluster
+      res, err = kong.cluster_events:broadcast("clustering:push_config")
+      if not res then
+        ngx_log(ngx_ERR, "unable to broadcast cluster event: ", err)
+      end
     end, "dao:crud")
 
-    kong.worker_events.register(function(data)
+    local push_config_cb = function()
       local res, err = declarative.export_config()
       if not res then
         ngx_log(ngx_ERR, "unable to export config from database: " .. err)
       end
 
       push_config(res)
-    end, "clustering", "push_config")
+    end
+
+    -- receive updates from other workers in the same node
+    kong.worker_events.register(push_config_cb, "clustering", "push_config")
+
+    -- receive updates from the cluster
+    kong.cluster_events:subscribe("clustering:push_config", push_config_cb)
   end
 end
 

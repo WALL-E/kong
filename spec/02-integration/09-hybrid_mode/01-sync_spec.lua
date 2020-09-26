@@ -129,4 +129,57 @@ for _, strategy in helpers.each_strategy() do
       end)
     end)
   end)
+
+  describe("CP/CP sync works with #" .. strategy .. " backend", function()
+    local admin_client_1, admin_client_2
+    lazy_setup(function()
+      helpers.get_db_utils(strategy, {
+        "routes",
+      })
+
+      assert(helpers.start_kong({
+        role = "control_plane",
+        database = strategy,
+        -- nginx_worker_processes = 2,
+        admin_listen = "127.0.0.1:9000",
+        nginx_conf = "spec/fixtures/custom_nginx.template",
+      }))
+
+      assert(helpers.start_kong({
+        role = "control_plane",
+        database = strategy,
+        prefix = "servroot2",
+        admin_listen = "127.0.0.1:9001",
+        nginx_conf = "spec/fixtures/custom_nginx.template",
+      }))
+
+
+    end)
+
+    lazy_teardown(function()
+      helpers.stop_kong()
+      helpers.stop_kong("servroot2")
+    end)
+
+    before_each(function()
+      admin_client_1 = helpers.http_client("127.0.0.1", 8001)
+      admin_client_2 = helpers.http_client("127.0.0.1", 9001)
+    end)
+
+    it("syncs across workers in the same node", function()
+      admin_client_1:post("/services", {
+        body = {
+          name = "example",
+          url = "http://example.dev",
+        },
+        headers = { ["Content-Type"] = "application/json" },
+      })
+
+
+    end)
+
+    it("syncs across other nodes in the cluster", function()
+
+    end)
+  end)
 end
